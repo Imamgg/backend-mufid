@@ -115,17 +115,48 @@ def get_history():
         limit = request.args.get("limit", type=int)
         offset = request.args.get("offset", default=0, type=int)
 
+        # Load full dataset untuk menghitung statistik
+        df_full = pd.read_csv("data/upsample_resampled.csv")
+
+        # Normalisasi nama kolom
+        df_full.columns = [c.lower() for c in df_full.columns]
+
+        # Hitung total rows
+        total_rows = len(df_full)
+
+        # Hitung statistik dari semua data
+        avg_hr = float(df_full["hr"].mean()) if "hr" in df_full.columns else 0
+        avg_eda = float(df_full["eda"].mean()) if "eda" in df_full.columns else 0
+
+        # Hitung distribusi label
+        label_counts = (
+            df_full["label"].value_counts().to_dict()
+            if "label" in df_full.columns
+            else {}
+        )
+        labels = {
+            "0": int(label_counts.get(0, 0)),
+            "1": int(label_counts.get(1, 0)),
+            "2": int(label_counts.get(2, 0)),
+        }
+
         # Jika limit tidak diberikan atau -1, ambil semua data
         if limit is None or limit == -1:
-            df = pd.read_csv("data/upsample_resampled.csv")
-            return jsonify(df.to_dict(orient="records"))
+            data = df_full.to_dict(orient="records")
+            pagination = {"limit": total_rows, "offset": 0, "total": total_rows}
+        else:
+            # Jika limit diberikan, gunakan pagination
+            df_paginated = df_full.iloc[offset : offset + limit]
+            data = df_paginated.to_dict(orient="records")
+            pagination = {"limit": limit, "offset": offset, "total": total_rows}
 
-        # Jika limit diberikan, gunakan pagination
-        df = pd.read_csv(
-            "data/upsample_resampled.csv", skiprows=range(1, offset + 1), nrows=limit
+        return jsonify(
+            {
+                "data": data,
+                "pagination": pagination,
+                "details": {"avg_hr": avg_hr, "avg_eda": avg_eda, "labels": labels},
+            }
         )
-
-        return jsonify(df.to_dict(orient="records"))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
