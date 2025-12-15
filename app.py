@@ -51,13 +51,18 @@ def load_artifacts():
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "StressMonitor API is Online", "model": "Loaded" if model else "Not Loaded"})
+    return jsonify(
+        {
+            "status": "StressMonitor API is Online",
+            "model": "Loaded" if model else "Not Loaded",
+        }
+    )
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
     load_artifacts()
-    
+
     try:
         data = request.json
 
@@ -105,8 +110,32 @@ def predict():
 # Endpoint untuk mengambil data dummy/history (Opsional, menggantikan MOCK_DATASET)
 @app.route("/history", methods=["GET"])
 def get_history():
-    df = pd.read_csv("data/upsample_resampled.csv")
-    return df.to_json(orient="records")
+    try:
+        # Ambil parameter query untuk pagination
+        limit = request.args.get("limit", default=100, type=int)
+        offset = request.args.get("offset", default=0, type=int)
+
+        # Batasi maksimal limit untuk mencegah overload
+        limit = min(limit, 1000)
+
+        # Baca CSV dengan chunk untuk efisiensi
+        df = pd.read_csv(
+            "data/upsample_resampled.csv", skiprows=range(1, offset + 1), nrows=limit
+        )
+
+        # Hitung total rows (untuk pagination info)
+        total_rows = (
+            sum(1 for line in open("data/upsample_resampled.csv")) - 1
+        )  # minus header
+
+        return jsonify(
+            {
+                "data": df.to_dict(orient="records"),
+                "pagination": {"limit": limit, "offset": offset, "total": total_rows},
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # --- TAMBAHKAN ROUTE BARU INI ---
@@ -140,6 +169,11 @@ def get_pca():
         pca_data = []
         labels = df["label"].values
         ids = df["id"].values if "id" in df.columns else range(len(df))
+
+        # Batasi jumlah data untuk mencegah timeout
+        max_rows = 10000
+        if len(df) > max_rows:
+            df = df.sample(n=max_rows, random_state=42)
 
         # Sampling agar tidak terlalu berat dikirim ke JSON (Max 500 titik)
         step = max(1, len(df) // 500)
