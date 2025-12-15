@@ -111,29 +111,22 @@ def predict():
 @app.route("/history", methods=["GET"])
 def get_history():
     try:
-        # Ambil parameter query untuk pagination
-        limit = request.args.get("limit", default=100, type=int)
+        # Ambil parameter query untuk pagination (opsional)
+        limit = request.args.get("limit", type=int)
         offset = request.args.get("offset", default=0, type=int)
 
-        # Batasi maksimal limit untuk mencegah overload
-        limit = min(limit, 1000)
+        # Jika limit tidak diberikan atau -1, ambil semua data
+        if limit is None or limit == -1:
+            df = pd.read_csv("data/upsample_resampled.csv")
+            return jsonify(df.to_dict(orient="records"))
 
-        # Baca CSV dengan chunk untuk efisiensi
+        # Jika limit diberikan, gunakan pagination
         df = pd.read_csv(
             "data/upsample_resampled.csv", skiprows=range(1, offset + 1), nrows=limit
         )
 
-        # Hitung total rows (untuk pagination info)
-        total_rows = (
-            sum(1 for line in open("data/upsample_resampled.csv")) - 1
-        )  # minus header
+        return jsonify(df.to_dict(orient="records"))
 
-        return jsonify(
-            {
-                "data": df.to_dict(orient="records"),
-                "pagination": {"limit": limit, "offset": offset, "total": total_rows},
-            }
-        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
